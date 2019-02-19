@@ -77,7 +77,7 @@ def classify_process():
             imageIDs.append(q["id"])
 
             if len(imageIDs) > 0:
-                print("* Batch size: {}".format(batch.shape))
+                print(" * Batch size: {}".format(batch.shape))
                 preds = model.predict(batch)
                 results = decode_predictions(preds)
 
@@ -120,6 +120,7 @@ def predict():
 if __name__ == '__main__':
     print(" * Start ResNet.")
     t = Thread(target=classify_process, args=())
+    print(" * Model loaded.")
     t.daemon = True
     t.start()
     print(" * Start Restful API")
