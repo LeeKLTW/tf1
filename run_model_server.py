@@ -109,7 +109,7 @@ def predict():
                 output = db.get(k)
                 if output is not None:
                     output = output.decode("utf-8")
-                    data["prediction"] = json.loads(output)
+                    data["predictions"] = json.loads(output)
                     db.delete(k)
                     break
                 time.sleep(CLIENT_SLEEP)
