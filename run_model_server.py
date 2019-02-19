@@ -34,7 +34,7 @@ model = None
 
 
 def base64_encode_image(a):
-    return base64.b64decode(a).decode("utf-8")
+    return base64.b64encode(a).decode("utf-8")
 
 
 def base64_decode_image(a, dtype, shape):
@@ -54,6 +54,7 @@ def prepare_image(image, target):
     image = img_to_array(image)
     image = np.expand_dims(image, axis=0)
     image = preprocess_input(image)
+
     return image
 
 
@@ -66,7 +67,7 @@ def classify_process():
         batch = None
 
         for q in queue:
-            q = json.load(q.decode('utf-8'))
+            q = json.loads(q.decode('utf-8'))
             image = base64_decode_image(q['image'], IMAGE_DTYPE, (1, IMAGE_HEIGHT, IMAGE_WIDTH, IMAGE_CHANS))
 
             if batch is None:
@@ -83,32 +84,32 @@ def classify_process():
                 for (imageID, resultSet) in zip(imageIDs, results):
                     output = []
                     for (imagenetID, label, prob) in resultSet:
-                        r = {"label":label,"probability":float(prob)}
+                        r = {"label": label, "probability": float(prob)}
                         output.append(r)
                     db.set(imageID, json.dumps(output))
 
-                db.ltrim(IMAGE_QUEUE,len(imageIDs),-1)
+                db.ltrim(IMAGE_QUEUE, len(imageIDs), -1)
             time.sleep(SEVER_SLEEP)
 
-@app.route("/predict",method=["POST"])
+
+@app.route("/predict", methods=["POST"])
 def predict():
     data = {"success": False}
     if flask.request.method == "POST":
         if flask.request.files.get('image'):
             image = flask.request.files['image'].read()
             image = Image.open(io.BytesIO(image))
-            image = prepare_image(image,(IMAGE_WIDTH,IMAGE_HEIGHT))
+            image = prepare_image(image, (IMAGE_WIDTH, IMAGE_HEIGHT))
             image = image.copy(order="C")
-            
             k = str(uuid.uuid4())
-            d = {"id":k, "image": base64_encode_image(image)}
-            db.rpush(IMAGE_QUEUE, json.dump(d))
+            d = {"id": k, "image": base64_encode_image(image)}
+            db.rpush(IMAGE_QUEUE, json.dumps(d))
 
             while True:
                 output = db.get(k)
                 if output is not None:
                     output = output.decode("utf-8")
-                    data["prediction"] = json.load(output)
+                    data["prediction"] = json.loads(output)
                     db.delete(k)
                     break
                 time.sleep(CLIENT_SLEEP)
@@ -117,9 +118,9 @@ def predict():
 
 
 if __name__ == '__main__':
-    print("* Start ResNet.")
+    print(" * Start ResNet.")
     t = Thread(target=classify_process, args=())
     t.daemon = True
     t.start()
-    print("* Start Restful API")
-    app.run()
+    print(" * Start Restful API")
+    app.run(debug=True)
