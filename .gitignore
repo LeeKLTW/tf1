@@ -1,3 +1,6 @@
+# virtual enviroment
+venv/
+
 .idea/
 ENV/
 *.jpg
