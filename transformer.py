@@ -22,7 +22,7 @@ len(word_index.values())
 
 np.random.seed(42)
 NUM_WORDS = max([len(sent) for sent in x_train])  # 2376
-
+MAX_LEN = 32
 
 def idx2word(idx):
     return [w for w in word_index if word_index[w] == idx][0]
@@ -42,66 +42,47 @@ def _pad_x(x):
     return pad_sequences(x, maxlen=NUM_WORDS)
 
 
-class ScaledDotProductAttention:
-    def __init__(self, dropout_rate=0.1):
-        """
-        dropout_rate: A floating point number of [0, 1].
-        """
-        self.dropout = keras.layers.Dropout(dropout_rate)
-
-    def __call__(self, q, k, v, mask):
-        """
-        Q: Packed queries. 3d tensor. [N, T_q, d_k].
-        K: Packed keys. 3d tensor. [N, T_k, d_k].
-        V: Packed values. 3d tensor. [N, T_k, d_v].
-        """
-        scale = K.sqrt(K.shape(k)[-1], dtype='float32')
-        attention = keras.layers.Lambda(lambda x: K.batch_dot(x[0], x[1], axes=[2, 2]) / scale)([q, k])  # why axes?
-        if mask is not None:
-            """This masking, combined with fact that the output embeddings are offset by one position, ensures that the
-            predictions for position i can depend only on the known outputs at positions less than i. Set to -inf"""
-            masked = keras.layers.Lambda(lambda x: (-1e10) * (1 - K.cast(x, 'float32')))(mask)
-            attention = keras.layers.Add([attention, masked])
-        attention = keras.layers.Activation('softmax')(attention)
-        attention = self.dropout(attention)
-        head = keras.layers.Lambda(lambda x: K.batch_dot(x[0], x[1]))([attention, v])
-        return head, attention
-
 class MultiHeadAttention:
-    def __init__(self, n_head, d_model, dropout, **kwargs):
+    def __init__(self, n_head=8, d_model=512, dropout=0.1,maxlen=MAX_LEN, **kwargs):
+        ""
         self.n_head = n_head
-        self.d_k = self.d_v = d_model // n_head  # 3.2.2
+        self.d_model = d_model
+        self.d_k = self.d_v = d_model // n_head  # 3.2.2 #dimentin of embedding
         self.dropout = dropout
-        self.qs_layers = []
-        self.ks_layers = []
-        self.vs_layers = []
-        for _ in range(n_head):
-            self.qs_layers.append(keras.layers.TimeDistributed(keras.layers.Dense(self.d_k, use_bias=False)))
-            self.ks_layers.append(keras.layers.TimeDistributed(keras.layers.Dense(self.d_k, use_bias=False)))
-            self.vs_layers.append(keras.layers.TimeDistributed(keras.layers.Dense(self.d_v, use_bias=False)))
+        self.maxlen = maxlen
+        self.wqi = keras.layers.Dense(self.d_model,use_bias=False)
+        self.wki = keras.layers.Dense(self.d_model,use_bias=False)
+        self.wvi = keras.layers.Dense(self.d_model,use_bias=False)
 
-        self.attention = ScaledDotProductAttention()
-        self.w_o = keras.layers.TimeDistributed(keras.layers.Dense(d_model))
 
     def __call__(self, q, k, v, mask=None):
-        multihead = []
-        multiattention = []
-        for i in range(self.n_head):
-            qs = self.qs_layers[i](q)
-            ks = self.ks_layers[i](k)
-            vs = self.vs_layers[i](k)
-            head, attention = self.attention(qs, ks, vs)
-            multihead.append(head)
-            multiattention.append(attention)
-        multihead = keras.layers.Concatenate()(multihead) if self.n_head > 1 else multihead[0]
-        multiattention = keras.layers.Concatenate()(multiattention) if self.n_head > 1 else multiattention[0]
+        """
+        q.shape = (batch_size,maxlen, d_k)
+        v.shape = (batch_size,maxlen, d_k)
+        k.shape = (batch_size,maxlen, d_k)
+        """
+        def _reshape1(x):
+            x = tf.reshape(x)
 
-        multihead = self.w_o(multihead)
-        multihead = keras.layers.Dropout(self.dropout)(multihead)
-        return multihead, multiattention
+        # multihead attention
+        dvd = np.sqrt(self.d_k)
+
+        q = self.wqi(q)
+        k = self.wki(k)
+        v = self.wvi(v)
+
+        attn = keras.layers.Lambda(lambda x:K.batch_dot(x[0],x[1],axes=[2,2])/dvd)([q, k])
+
+        if mask is not None:
+            mmask = keras.layers.Lambda(lambda x:(-1e+10)*(1-x))(mask)
+            attn = keras.layers.Add()([attn, mmask])
+        attn = keras.layers.Activation('softmax')(attn)
+        attn = keras.layers.Lambda(lambda x:K.batch_dot(x[0], x[1]))([attn, v])
+        return attn
 
     def compute_output_shape(self, input_shape):
         pass
+
 
 
 class ADDNORM(Layer):
