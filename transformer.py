@@ -44,39 +44,32 @@ def _pad_x(x):
 
 
 class MultiHeadAttention:
-    def __init__(self, n_head=8, d_model=512, dropout=0.1, maxlen=MAX_LEN, **kwargs):
+    def __init__(self, n_head=8, d_model=512, dropout_rate=0.1, maxlen=MAX_LEN, **kwargs):
         ""
         self.n_head = n_head
         self.d_model = d_model
         self.d_k = self.d_v = d_model // n_head  # 3.2.2 #dimentin of embedding
-        self.dropout = dropout
+        self.dropout_rate = dropout_rate
         self.maxlen = maxlen
+
         self.wqi = keras.layers.Dense(self.d_model, use_bias=False)
         self.wki = keras.layers.Dense(self.d_model, use_bias=False)
         self.wvi = keras.layers.Dense(self.d_model, use_bias=False)
 
     def __call__(self, q, k, v, mask=None):
         """
-        q.shape = (batch_size,maxlen, d_k)
-        v.shape = (batch_size,maxlen, d_k)
-        k.shape = (batch_size,maxlen, d_k)
+        q.shape = (batch_size, maxlen, d_k)
+        v.shape = (batch_size, maxlen, d_k)
+        k.shape = (batch_size, maxlen, d_k)
         """
-
-        def _reshape1(x):
-            shape = tf.reshape(x)  # [batch_size, maxlen, n_head * d_k]
-            x = tf.reshape(x, shape=(-1, shape[1], self.n_head, d_k))  # [batch_size, maxlen, n_head, d_k]
-            x = tf.transpose(x, (2, 0, 1, 3))  # [n_head,batch_size,maxlen,d_k]
-            x = tf.reshape(x, (-1, shape[1], d_k)) # [n_head*batch_size, max_len, d_k]
-            return x
-
         # multihead attention
         d_k, d_v = self.d_k, self.d_k
         dvd = np.sqrt(self.d_k)
 
         #todo continue here
-        q = self.wqi(q)
-        k = self.wki(k)
-        v = self.wvi(v)
+        q = self.wqi(tf.constant(q,))
+        k = self.wki(tf.constant(k))
+        v = self.wvi(tf.constant(v))
 
         attn = keras.layers.Lambda(lambda x: K.batch_dot(x[0], x[1], axes=[2, 2]) / dvd)([q, k])
 
