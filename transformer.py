@@ -8,8 +8,8 @@ from sklearn.model_selection import train_test_split
 
 import tensorflow as tf
 
-tf.enable_eager_execution()
-tf.executing_eagerly()
+# tf.enable_eager_execution()
+# tf.executing_eagerly()
 from tensorflow import keras
 from tensorflow.keras import backend as K
 
@@ -34,82 +34,83 @@ NUM_WORDS = 2376
 MAX_LEN = 12
 
 
-def idx2word(idx):
-    return [w for w in word_index if word_index[w] == idx][0]
+# def idx2word(idx):
+#     return [w for w in word_index if word_index[w] == idx][0]
 
 
-def _tokenize():
-    x_example_idx = np.random.choice(range(len(x_train)), 1)[0]
-    x_example = ' '.join([idx2word(idx) for idx in x_train[x_example_idx]])
-    print(x_example)
-    NUM_WORDS = max([len(sent) for sent in x_train])  # 2376
-    tokenizer = Tokenizer(num_words=NUM_WORDS)
-    tokenizer.fit_on_texts([x_example])
-    print(tokenizer.texts_to_sequences([x_example]))
-
-
-def _pad_x(x):
-    return pad_sequences(x, maxlen=NUM_WORDS)
+# def _tokenize():
+#     x_example_idx = np.random.choice(range(len(x_train)), 1)[0]
+#     x_example = ' '.join([idx2word(idx) for idx in x_train[x_example_idx]])
+#     print(x_example)
+#     NUM_WORDS = max([len(sent) for sent in x_train])  # 2376
+#     tokenizer = Tokenizer(num_words=NUM_WORDS)
+#     tokenizer.fit_on_texts([x_example])
+#     print(tokenizer.texts_to_sequences([x_example]))
+#
+#
+# def _pad_x(x):
+#     return pad_sequences(x, maxlen=NUM_WORDS)
 
 
 class MultiHeadAttention:
-    def __init__(self, n_head=8, d_model=512, dropout_rate=0.1, maxlen=MAX_LEN, **kwargs):
+    def __init__(self, n_head=8, d_k=64, maxlen=MAX_LEN, **kwargs):
         "given d_model & n_head, we can know d_k"
         self.n_head = n_head
-        self.d_model = d_model
-        self.d_k = self.d_v = d_model // n_head  # 3.2.2 #dimentin of embedding
-        self.dropout_rate = dropout_rate
+        self.d_k = d_k
+        self.d_model = self.n_head * self.d_k
         self.maxlen = maxlen
-
         self.wqi = keras.layers.Dense(self.d_model, use_bias=False)
         self.wki = keras.layers.Dense(self.d_model, use_bias=False)
         self.wvi = keras.layers.Dense(self.d_model, use_bias=False)
+        super(MultiHeadAttention,self).__init__(**kwargs)
+
 
     def __call__(self, q, k, v, mask=None):
         """
         q.shape = (batch_size, maxlen, d_k*n_head)
         v.shape = (batch_size, maxlen, d_k*n_head)
         k.shape = (batch_size, maxlen, d_k*n_head)
+        return shape
         """
         # multihead attention
-        d_k, d_v = self.d_k, self.d_k
         dvd = np.sqrt(self.d_k)
 
         q = self.wqi(tf.constant(q))
         k = self.wki(tf.constant(k))
         v = self.wvi(tf.constant(v))
+        tf.transpose(k,[0,2,1]).shape
 
-        attn = keras.layers.Lambda(lambda x: K.batch_dot(x[0], x[1], axes=[2, 2]) / dvd)([q, k])
+        attn = keras.layers.Lambda(lambda x: K.batch_dot(x[0], tf.transpose(x[1],[0,2,1])) / dvd)([q, k])
 
         if mask is not None:
             mmask = keras.layers.Lambda(lambda x: (-1e+10) * (1 - x))(mask)
             attn = keras.layers.Add()([attn, mmask])
         attn = keras.layers.Activation('softmax')(attn)
-        attn = keras.layers.Lambda(lambda x: K.batch_dot(x[0], x[1],axes=[1, 1]))([attn, v])
+        attn = keras.layers.Lambda(lambda x: K.batch_dot(x[0], tf.transpose(x[1],[0,1,2])))([attn, v])
+        attn = keras.layers.Lambda(lambda x:tf.reshape(x,[-1, self.maxlen,self.n_head,self.d_k]))(attn)
         return attn
 
-    def compute_output_shape(self, input_shape):
-        pass
+    def compute_output_shape(self,):
+        """ (batch_size, maxlen, maxlen)"""
+        return (self.maxlen,self.maxlen)
 
 
-
-class ADDNORM(Layer):
-    def __init__(self, eps=1e-6, **kwargs):
+class ADDNORM:
+    def __init__(self, input_shape, eps=1e-6, **kwargs):
         self.eps = eps
-        super(ADDNORM, self).__init__(**kwargs)
+        self.gamma = keras.layers.Dense(units=input_shape[-1:], kernel_initializer=keras.initializers.Ones(),use_bias=False)
+        self.beta = keras.layers.Dense(units=input_shape[-1:], kernel_initializer=keras.initializers.Zeros(),use_bias=False)
 
     def build(self, input_shape):
-        self.gamma = self.add_weight(name='gamma', shape=input_shape[-1:], initializer=keras.initializers.Ones())
-        self.beta = self.add_weight(name='beta', shape=input_shape[-1:], initializer=keras.initializers.Zeros())
-        super(ADDNORM, self).build(input_shape)
+        pass
 
-    def __call__(self, x, output):
-        """
-        residual block
+    def __call__(self, identical_n_fnout):
+        """ residual block
         :param x: residual input
         :param output: sublayer output for input
         :return:
         """
+
         x = tf.constant(x)
         output = tf.constant(output)
         mean = K.mean(output, axis=-1, keepdims=True)
@@ -121,10 +122,40 @@ class ADDNORM(Layer):
     def compute_output_shape(self, input_shape):
         return input_shape
 
-# x = np.ones((10,12,512))
-# q = np.random.random((10,12,512))
-# an = ADDNORM()
-# an(x,q)
+
+class LayerNormalization(keras.layers.Layer):
+    def __init__(self, eps=1e-6, **kwargs):
+        self.eps = eps
+        super(LayerNormalization, self).__init__(**kwargs)
+    def build(self, input_shape):
+        self.gamma = self.add_weight(name='gamma', shape=input_shape[-1:],
+                                     initializer=keras.initializers.Ones(), trainable=True)
+        self.beta = self.add_weight(name='beta', shape=input_shape[-1:],
+                                    initializer=keras.initializers.Zeros(), trainable=True)
+        super(LayerNormalization, self).build(input_shape)
+    def call(self, x):
+        mean = K.mean(x, axis=-1, keepdims=True)
+        std = K.std(x, axis=-1, keepdims=True)
+        return self.gamma * (x - mean) / (std + self.eps) + self.beta
+    def compute_output_shape(self, input_shape):
+        return input_shape
+
+
+
+def foo():
+    q = np.random.random((1, 12, 512))
+    mha = MultiHeadAttention()
+    x = mha(q, q, q)
+    ln = LayerNormalization()
+    x = ln(x)
+    x
+
+
+x = np.arange(0,15).reshape(5,3)
+x = keras.layers.Lambda()
+tf.reshape(x,[1,12,512])
+ffn = PositionwiseFFN()
+ffn(tf.reshape(x,[1,12,512]))
 
 class PositionwiseFFN:
     def __init__(self, d_model=512, d_ff=2048):
@@ -156,7 +187,6 @@ class EncoderLayer:
         pos_ffn_output_addnorm = self.addnorm2(multihead_addnorm, pos_ffn_output)
 
         return pos_ffn_output_addnorm, multiattention
-
 
 
 class DecoderLayer:
