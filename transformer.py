@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+"""
+# todo: repeat embedding n_head times for multihead, since we use d_model for multi-head attention
+
+"""
 import numpy as np
 from sklearn.model_selection import train_test_split
 
@@ -49,7 +53,7 @@ def _pad_x(x):
 
 class MultiHeadAttention:
     def __init__(self, n_head=8, d_model=512, dropout_rate=0.1, maxlen=MAX_LEN, **kwargs):
-        ""
+        "given d_model & n_head, we can know d_k"
         self.n_head = n_head
         self.d_model = d_model
         self.d_k = self.d_v = d_model // n_head  # 3.2.2 #dimentin of embedding
@@ -70,7 +74,6 @@ class MultiHeadAttention:
         d_k, d_v = self.d_k, self.d_k
         dvd = np.sqrt(self.d_k)
 
-        # todo continue here
         q = self.wqi(tf.constant(q))
         k = self.wki(tf.constant(k))
         v = self.wvi(tf.constant(v))
