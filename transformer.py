@@ -3,6 +3,10 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 
 import tensorflow as tf
+
+tf.enable_eager_execution()
+tf.executing_eagerly()
+
 from tensorflow import keras
 from tensorflow.keras import backend as K
 
@@ -22,7 +26,7 @@ len(word_index.values())
 
 np.random.seed(42)
 NUM_WORDS = max([len(sent) for sent in x_train])  # 2376
-MAX_LEN = 32
+MAX_LEN = 12
 
 
 def idx2word(idx):
@@ -58,16 +62,16 @@ class MultiHeadAttention:
 
     def __call__(self, q, k, v, mask=None):
         """
-        q.shape = (batch_size, maxlen, d_k)
-        v.shape = (batch_size, maxlen, d_k)
-        k.shape = (batch_size, maxlen, d_k)
+        q.shape = (batch_size, maxlen, d_k*n_head)
+        v.shape = (batch_size, maxlen, d_k*n_head)
+        k.shape = (batch_size, maxlen, d_k*n_head)
         """
         # multihead attention
         d_k, d_v = self.d_k, self.d_k
         dvd = np.sqrt(self.d_k)
 
-        #todo continue here
-        q = self.wqi(tf.constant(q,))
+        # todo continue here
+        q = self.wqi(tf.constant(q))
         k = self.wki(tf.constant(k))
         v = self.wvi(tf.constant(v))
 
@@ -77,11 +81,21 @@ class MultiHeadAttention:
             mmask = keras.layers.Lambda(lambda x: (-1e+10) * (1 - x))(mask)
             attn = keras.layers.Add()([attn, mmask])
         attn = keras.layers.Activation('softmax')(attn)
-        attn = keras.layers.Lambda(lambda x: K.batch_dot(x[0], x[1]))([attn, v])
+        attn = keras.layers.Lambda(lambda x: K.batch_dot(x[0], x[1]), axes=[2, 2])([attn, v])
         return attn
 
     def compute_output_shape(self, input_shape):
         pass
+
+
+d_k = 64
+n_head = 8
+d_model = d_k * n_head
+mha = MultiHeadAttention()
+q = np.random.random((10, MAX_LEN, d_model))
+K.constant(q)
+
+mha(q, q, q)
 
 
 class ADDNORM(Layer):
@@ -181,8 +195,6 @@ class Encoder:
             if return_attentions:
                 attentions.append(att)
         return (x, attentions) if return_attentions else x
-
-
 
 
 def get_PAD_mask(q, k):  # todo check it latter
