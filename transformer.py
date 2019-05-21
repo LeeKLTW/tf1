@@ -10,7 +10,6 @@ import tensorflow as tf
 
 tf.enable_eager_execution()
 tf.executing_eagerly()
-
 from tensorflow import keras
 from tensorflow.keras import backend as K
 
@@ -18,18 +17,20 @@ from tensorflow.keras.preprocessing.text import Tokenizer
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 from tensorflow.keras.layers import Layer
 
-(x_train, y_train), (x_test, y_test) = keras.datasets.reuters.load_data()
-x_train, x_val, y_train, y_val = train_test_split(x_train, y_train, test_size=0.2)
-assert len(np.unique(y_train)) == len(np.unique(y_test))  # 46
+# (x_train, y_train), (x_test, y_test) = keras.datasets.reuters.load_data()
+# x_train, x_val, y_train, y_val = train_test_split(x_train, y_train, test_size=0.2)
+# assert len(np.unique(y_train)) == len(np.unique(y_test))  # 46
 
-NUM_CATEGORY = len(np.unique(y_train))
-word_index = keras.datasets.reuters.get_word_index()
-
-MAX_FEATURE = max(word_index.values()) + 100  # additional index to fix InvalidArgument Error
-len(word_index.values())
+# NUM_CATEGORY = len(np.unique(y_train))
+NUM_CATEGORY = 46
+# word_index = keras.datasets.reuters.get_word_index()
+#
+# MAX_FEATURE = max(word_index.values()) + 100  # additional index to fix InvalidArgument Error
+# len(word_index.values())
 
 np.random.seed(42)
-NUM_WORDS = max([len(sent) for sent in x_train])  # 2376
+# NUM_WORDS = max([len(sent) for sent in x_train])  # 2376
+NUM_WORDS = 2376
 MAX_LEN = 12
 
 
@@ -84,21 +85,12 @@ class MultiHeadAttention:
             mmask = keras.layers.Lambda(lambda x: (-1e+10) * (1 - x))(mask)
             attn = keras.layers.Add()([attn, mmask])
         attn = keras.layers.Activation('softmax')(attn)
-        attn = keras.layers.Lambda(lambda x: K.batch_dot(x[0], x[1]), axes=[2, 2])([attn, v])
+        attn = keras.layers.Lambda(lambda x: K.batch_dot(x[0], x[1],axes=[1, 1]))([attn, v])
         return attn
 
     def compute_output_shape(self, input_shape):
         pass
 
-
-d_k = 64
-n_head = 8
-d_model = d_k * n_head
-mha = MultiHeadAttention()
-q = np.random.random((10, MAX_LEN, d_model))
-K.constant(q)
-
-mha(q, q, q)
 
 
 class ADDNORM(Layer):
@@ -113,10 +105,13 @@ class ADDNORM(Layer):
 
     def __call__(self, x, output):
         """
+        residual block
         :param x: residual input
         :param output: sublayer output for input
         :return:
         """
+        x = tf.constant(x)
+        output = tf.constant(output)
         mean = K.mean(output, axis=-1, keepdims=True)
         std = K.std(output, axis=-1, keepdims=True)
         output = self.gamma * (x - mean) / (std + self.eps) + self.beta  # normalized
@@ -126,6 +121,10 @@ class ADDNORM(Layer):
     def compute_output_shape(self, input_shape):
         return input_shape
 
+# x = np.ones((10,12,512))
+# q = np.random.random((10,12,512))
+# an = ADDNORM()
+# an(x,q)
 
 class PositionwiseFFN:
     def __init__(self, d_model=512, d_ff=2048):
@@ -157,6 +156,7 @@ class EncoderLayer:
         pos_ffn_output_addnorm = self.addnorm2(multihead_addnorm, pos_ffn_output)
 
         return pos_ffn_output_addnorm, multiattention
+
 
 
 class DecoderLayer:
