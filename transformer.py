@@ -42,18 +42,8 @@ from tensorflow.keras.preprocessing.sequence import pad_sequences
 #     return [w for w in word_index if word_index[w] == idx][0]
 
 
-# def _tokenize():
-#     x_example_idx = np.random.choice(range(len(x_train)), 1)[0]
-#     x_example = ' '.join([idx2word(idx) for idx in x_train[x_example_idx]])
-#     print(x_example)
-#     NUM_WORDS = max([len(sent) for sent in x_train])  # 2376
-#     tokenizer = Tokenizer(num_words=NUM_WORDS)
-#     tokenizer.fit_on_texts([x_example])
-#     print(tokenizer.texts_to_sequences([x_example]))
-#
-#
-# def _pad_x(x):
-#     return pad_sequences(x, maxlen=NUM_WORDS)
+    def compute_output_shape(self, input_shape):
+        return input_shape
 
 
 class MultiheadAttention(keras.layers.Layer):
