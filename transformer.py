@@ -76,20 +76,54 @@ class MultiheadAttention(keras.layers.Layer):
         self.WO = self.add_weight(name='WO', shape=(input_shape[2][-1], self.n_model),
                                   trainable=True)  # shape=(d_model,d_model)
 
-    def __call__(self, identical_n_fnout):
-        """ residual block
-        :param x: residual input
-        :param output: sublayer output for input
-        :return:
-        """
+        super(MultiheadAttention, self).build(input_shape)
 
-        x = tf.constant(x)
-        output = tf.constant(output)
-        mean = K.mean(output, axis=-1, keepdims=True)
-        std = K.std(output, axis=-1, keepdims=True)
-        output = self.gamma * (x - mean) / (std + self.eps) + self.beta  # normalized
-        output = keras.layers.Add()([output, x])  # Add, residual
-        return output
+    def mask(self, attn, mask_idx, used_padding='pre'):
+        """attn.shape = (batch_size, max_len, n_head, d_k)
+        add -infinity not multiplication, cause it might be 0, make it failed to mask
+        """
+        mask_unseen = -K.ones(shape=(K.shape(attn)[0], mask_idx, K.shape(attn)[2], K.shape(attn)[3])) * 1e10
+        seen = K.zeros(shape=(K.shape(attn)[0], mask_idx - 1, K.shape(attn)[2], K.shape(attn)[3]))
+
+        if used_padding.lower() == 'pre':  # pad_sequences default padding='pre'
+            mask = K.concatenate([mask_unseen, seen], axis=1)
+
+        elif used_padding.lower() == 'post':
+            mask = K.concatenate([seen, mask_unseen], axis=1)
+        else:
+            raise ValueError(
+                'Please Insert correct padding arg used in tensorflow.keras.preprocessing.sequence.pad_sequences')
+        attn += mask
+
+        return attn
+
+    def __call__(self, inputs):
+        """inputs = [q,k,v] or [q,k,v,mask_len]"""
+        if len(inputs) == 3:
+            q, k, v = inputs
+        elif len(inputs) == 4:
+            q, k, v, self.mask_idx = inputs
+
+        q = K.batch_dot(q, self.WQ)  # shape =(batch_size,max_len ,d_model)
+        q = K.reshape(q, (-1, K.shape(q)[1], self.n_head, self.d_k))  # shape = (batch_size, max_len, n_head, d_k)
+
+        k = K.batch_dot(k, self.WK)  # shape =(batch_size,max_len ,d_model)
+        k = K.reshape(k, (-1, K.shape(k)[1], self.n_head, self.d_k))  # shape = (batch_size, max_len, n_head, d_k)
+
+        v = K.batch_dot(v, self.WV)  # shape =(batch_size,max_len ,d_model)
+        v = K.reshape(v, (-1, K.shape(v)[1], self.n_head, self.d_k))  # shape = (batch_size, max_len, n_head, d_k)
+
+        a = K.batch_dot(q, k, axes=[3, 3]) / self.d_k ** 0.5  # shape = (batch_size, max_len, n_head, d_k)
+        a = self.mask(a, self.mask_idx)
+
+        a = K.softmax(a)
+
+        a = K.batch_dot(a, v, axes=[3, 3]) / self.d_k ** 0.5  # shape = (batch_size, max_len, n_head, d_k)
+
+        # concat(heads)*WO  since we compute together, we dont have to concat,
+        a = K.batch_dot(a, self.WO)  # shape = (batch_size, max_len, n_head, d_k)
+        return a
+
 
     def compute_output_shape(self, input_shape):
         return input_shape
