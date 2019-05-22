@@ -56,14 +56,14 @@ class MultiheadAttention(keras.layers.Layer):
 
     def build(self, input_shape):
         # inputs = [q,k,v]
-        self.WQ = self.add_weight(name='WQ', shape=(input_shape[0][-1], self.n_model),
+        self.WQ = self.add_variable(name='WQ', shape=(input_shape[0][-1], self.n_model),
                                   trainable=True)  # shape=(d_model,d_model)
-        self.WK = self.add_weight(name='WK', shape=(input_shape[1][-1], self.n_model),
+        self.WK = self.add_variable(name='WK', shape=(input_shape[1][-1], self.n_model),
                                   trainable=True)  # shape=(d_model,d_model)
-        self.WV = self.add_weight(name='WV', shape=(input_shape[2][-1], self.n_model),
+        self.WV = self.add_variable(name='WV', shape=(input_shape[2][-1], self.n_model),
                                   trainable=True)  # shape=(d_model,d_model)
 
-        self.WO = self.add_weight(name='WO', shape=(input_shape[2][-1], self.n_model),
+        self.WO = self.add_variable(name='WO', shape=(input_shape[2][-1], self.n_model),
                                   trainable=True)  # shape=(d_model,d_model)
 
         super(MultiheadAttention, self).build(input_shape)
