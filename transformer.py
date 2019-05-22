@@ -95,12 +95,15 @@ class MultiheadAttention(keras.layers.Layer):
             q, k, v, self.mask_idx = inputs
 
         q = K.batch_dot(q, self.WQ)  # shape =(batch_size,max_len ,d_model)
+        # todo: why?
         q = K.reshape(q, (-1, K.shape(q)[1], self.n_head, self.d_k))  # shape = (batch_size, max_len, n_head, d_k)
 
         k = K.batch_dot(k, self.WK)  # shape =(batch_size,max_len ,d_model)
+        # todo: why?
         k = K.reshape(k, (-1, K.shape(k)[1], self.n_head, self.d_k))  # shape = (batch_size, max_len, n_head, d_k)
 
         v = K.batch_dot(v, self.WV)  # shape =(batch_size,max_len ,d_model)
+        # todo: why?
         v = K.reshape(v, (-1, K.shape(v)[1], self.n_head, self.d_k))  # shape = (batch_size, max_len, n_head, d_k)
 
         a = K.batch_dot(q, k, axes=[3, 3]) / self.d_k ** 0.5  # shape = (batch_size, max_len, n_head, d_k)
