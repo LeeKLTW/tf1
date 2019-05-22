@@ -3,7 +3,6 @@
 
 """
 import numpy as np
-from sklearn.model_selection import train_test_split
 
 import tensorflow as tf
 
@@ -14,23 +13,29 @@ from tensorflow.keras import backend as K
 
 from tensorflow.keras.preprocessing.text import Tokenizer
 from tensorflow.keras.preprocessing.sequence import pad_sequences
-from tensorflow.keras.layers import Layer
 
-# (x_train, y_train), (x_test, y_test) = keras.datasets.reuters.load_data()
-# x_train, x_val, y_train, y_val = train_test_split(x_train, y_train, test_size=0.2)
-# assert len(np.unique(y_train)) == len(np.unique(y_test))  # 46
-
-# NUM_CATEGORY = len(np.unique(y_train))
-NUM_CATEGORY = 46
-# word_index = keras.datasets.reuters.get_word_index()
+# x_train = ['大部分的理賠案都是直接理賠成功或是經由財團法人金融評議中心調處後達成共識，只有少數的爭議案件走到訴訟程序',
+#            'OpenBSD以對開放原始碼的堅持、高品質的檔案、堅定的軟體受權條款和專注於系統安全及程式碼品質而聞名']
+# y_train = [1, 0]
 #
-# MAX_FEATURE = max(word_index.values()) + 100  # additional index to fix InvalidArgument Error
-# len(word_index.values())
-
-np.random.seed(42)
-# NUM_WORDS = max([len(sent) for sent in x_train])  # 2376
-NUM_WORDS = 2376
-MAX_LEN = 12
+# np.random.seed(42)
+# # NUM_WORDS = max([len(sent) for sent in x_train])  # 2376
+# NUM_WORDS = 3000
+# MAX_LEN = 60
+#
+# tokenizer = Tokenizer(num_words=NUM_WORDS, char_level=True, oov_token=1)
+# tokenizer.fit_on_texts(''.join(x_train))
+# x_train = tokenizer.texts_to_sequences(x_train)
+# x_train = keras.preprocessing.sequence.pad_sequences(x_train, maxlen=MAX_LEN)
+#
+# model = keras.Sequential()
+# model.add(keras.layers.Embedding(input_dim=MAX_LEN + 100, output_dim=64, input_shape=(MAX_LEN,)))
+# model.add(keras.layers.Dense(10, activation='relu'))
+# model.add(keras.layers.Flatten())
+# model.add(keras.layers.Dense(1, activation='sigmoid'))
+# model.compile(loss='binary_crossentropy', optimizer=tf.train.AdamOptimizer(), metrics=['accuracy'])
+# model.fit(x_train, y_train, epochs=10)
+# model.summary()
 
 
 # def idx2word(idx):
