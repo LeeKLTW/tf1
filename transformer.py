@@ -56,57 +56,25 @@ from tensorflow.keras.preprocessing.sequence import pad_sequences
 #     return pad_sequences(x, maxlen=NUM_WORDS)
 
 
-class MultiHeadAttention:
-    def __init__(self, n_head=8, d_k=64, maxlen=MAX_LEN, **kwargs):
-        "given d_model & n_head, we can know d_k"
-        self.n_head = n_head
+class MultiheadAttention(keras.layers.Layer):
+    def __init__(self, d_k, n_head, mask_idx=None, **kwargs):
         self.d_k = d_k
-        self.d_model = self.n_head * self.d_k
-        self.maxlen = maxlen
-        self.wqi = keras.layers.Dense(self.d_model, use_bias=False)
-        self.wki = keras.layers.Dense(self.d_model, use_bias=False)
-        self.wvi = keras.layers.Dense(self.d_model, use_bias=False)
-        super(MultiHeadAttention,self).__init__(**kwargs)
-
-
-    def __call__(self, q, k, v, mask=None):
-        """
-        q.shape = (batch_size, maxlen, d_k*n_head)
-        v.shape = (batch_size, maxlen, d_k*n_head)
-        k.shape = (batch_size, maxlen, d_k*n_head)
-        return shape
-        """
-        # multihead attention
-        dvd = np.sqrt(self.d_k)
-
-        q = self.wqi(tf.constant(q))
-        k = self.wki(tf.constant(k))
-        v = self.wvi(tf.constant(v))
-        tf.transpose(k,[0,2,1]).shape
-
-        attn = keras.layers.Lambda(lambda x: K.batch_dot(x[0], tf.transpose(x[1],[0,2,1])) / dvd)([q, k])
-
-        if mask is not None:
-            mmask = keras.layers.Lambda(lambda x: (-1e+10) * (1 - x))(mask)
-            attn = keras.layers.Add()([attn, mmask])
-        attn = keras.layers.Activation('softmax')(attn)
-        attn = keras.layers.Lambda(lambda x: K.batch_dot(x[0], tf.transpose(x[1],[0,1,2])))([attn, v])
-        attn = keras.layers.Lambda(lambda x:tf.reshape(x,[-1, self.maxlen,self.n_head,self.d_k]))(attn)
-        return attn
-
-    def compute_output_shape(self,):
-        """ (batch_size, maxlen, maxlen)"""
-        return (self.maxlen,self.maxlen)
-
-
-class ADDNORM:
-    def __init__(self, input_shape, eps=1e-6, **kwargs):
-        self.eps = eps
-        self.gamma = keras.layers.Dense(units=input_shape[-1:], kernel_initializer=keras.initializers.Ones(),use_bias=False)
-        self.beta = keras.layers.Dense(units=input_shape[-1:], kernel_initializer=keras.initializers.Zeros(),use_bias=False)
+        self.n_head = n_head
+        self.n_model = self.d_k * self.n_head
+        self.mask_idx = mask_idx
+        super(MultiheadAttention, self).__init__(**kwargs)
 
     def build(self, input_shape):
-        pass
+        # inputs = [q,k,v]
+        self.WQ = self.add_weight(name='WQ', shape=(input_shape[0][-1], self.n_model),
+                                  trainable=True)  # shape=(d_model,d_model)
+        self.WK = self.add_weight(name='WK', shape=(input_shape[1][-1], self.n_model),
+                                  trainable=True)  # shape=(d_model,d_model)
+        self.WV = self.add_weight(name='WV', shape=(input_shape[2][-1], self.n_model),
+                                  trainable=True)  # shape=(d_model,d_model)
+
+        self.WO = self.add_weight(name='WO', shape=(input_shape[2][-1], self.n_model),
+                                  trainable=True)  # shape=(d_model,d_model)
 
     def __call__(self, identical_n_fnout):
         """ residual block
