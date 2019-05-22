@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 """
-# todo: repeat embedding n_head times for multihead, since we use d_model for multi-head attention
 
 """
 import numpy as np
