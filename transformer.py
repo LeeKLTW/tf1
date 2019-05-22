@@ -94,25 +94,23 @@ class MultiheadAttention(keras.layers.Layer):
         elif len(inputs) == 4:
             q, k, v, self.mask_idx = inputs
 
-        q = K.batch_dot(q, self.WQ)  # shape =(batch_size,max_len ,d_model)
-        # todo: why?
-        q = K.reshape(q, (-1, K.shape(q)[1], self.n_head, self.d_k))  # shape = (batch_size, max_len, n_head, d_k)
+        q = K.batch_dot(q, self.WQ,axes=[2,2])  # shape =(batch_size,max_len ,d_model)
 
-        k = K.batch_dot(k, self.WK)  # shape =(batch_size,max_len ,d_model)
-        # todo: why?
-        k = K.reshape(k, (-1, K.shape(k)[1], self.n_head, self.d_k))  # shape = (batch_size, max_len, n_head, d_k)
+        k = K.batch_dot(k, self.WK,axes=[2,2])  # shape =(batch_size,max_len ,d_model)
 
-        v = K.batch_dot(v, self.WV)  # shape =(batch_size,max_len ,d_model)
-        # todo: why?
-        v = K.reshape(v, (-1, K.shape(v)[1], self.n_head, self.d_k))  # shape = (batch_size, max_len, n_head, d_k)
+        v = K.batch_dot(v, self.WV,axes=[2,2])  # shape =(batch_size,max_len ,d_model)
 
-        a = K.batch_dot(q, k, axes=[3, 3]) / self.d_k ** 0.5  # shape = (batch_size, max_len, n_head, d_k)
+
+        a = K.batch_dot(q, k, axes=[3, 3]) / self.d_k ** 0.5  # shape = (batch_size, max_len, d_model)
+        a = K.reshape(a, (-1, K.shape(v)[1], self.n_head, self.d_k))  # shape = (batch_size, max_len, n_head, d_k)
+
         a = self.mask(a, self.mask_idx)
 
-        a = K.softmax(a)
+        a = K.softmax(a) # shape = (batch_size, max_len, n_head, d_k)
 
         a = K.batch_dot(a, v, axes=[3, 3]) / self.d_k ** 0.5  # shape = (batch_size, max_len, n_head, d_k)
 
+        # todo test here
         # concat(heads)*WO  since we compute together, we dont have to concat,
         a = K.batch_dot(a, self.WO)  # shape = (batch_size, max_len, n_head, d_k)
         return a
