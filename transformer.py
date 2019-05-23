@@ -39,57 +39,22 @@ class ScaledDorProduct(keras.layers.Layer):
         return mask
 
 
-def get_sub_mask(s):  # todo check it latter
-    len_s = K.shape(s)[1]
-    mask = K.cumsum(K.eye(len_s), 1)
-    return mask
+    def __call__(self,inputs, mask=None, **kwargs):
+        if isinstance(inputs, list):
+            query, key, value = inputs
+        else:
+            query = key = value = inputs
+        if isinstance(mask,list):
+            mask = mask[1]
+
+        feature_dim = K.shape(query)[-1]
+
+        a = K.batch_dot(query, key,axes=2)/ K.sqrt(K.cast(feature_dim),K.floatx())
+        a = K.exp(a - K.max(a,axis=-1, keepdims=True)) # not softmax directly, need to mask
 
 
-class Deocoder:
-    def __init__(self, d_model, d_ff, n_head=8, n_layers=6, dropout_rate=0.1):
-        self.layers = [DecoderLayer(d_model, d_ff, n_head, dropout_rate) for _ in range(n_layers)]
-
-    def __call__(self, outputs_embedding, input_seq, output_seq, encoder_output, return_attentions=False):
-        if return_attentions:
-            encoder_attentions = []
-            decoder_attentions = []
-
-        dec_pad_mask = keras.layers.Lambda(lambda x: get_PAD_mask(x, x))(output_seq)
-        dec_sub_mask = keras.layers.Lambda(get_sub_mask)(output_seq)
-        dec_mask = keras.layers.Lambda(lambda x: K.minimum(x[0], x[1]))([dec_pad_mask, dec_sub_mask])
-        enc_mask = keras.layers.Lambda(lambda x: get_PAD_mask(x[0], x[1]))([output_seq, input_seq])
-
-        x = outputs_embedding
-        for dec_layer in self.layers:
-            x, dec_multiattention, enc_multiattention = dec_layer(x, encoder_output, dec_mask, enc_mask)
-            if return_attentions:
-                decoder_attentions.append(dec_multiattention)
-                encoder_attentions.append(enc_multiattention)
-        return (x, decoder_attentions, encoder_attentions) if return_attentions else x
-
-
-class Transformer:
-    def __init__(self, maxlen, d_model=512, d_ff=2048, n_head=8, d_v=64, layers=2, dropout=0.1):
-        self.input_embedding = None  # dot it here
-        self.positional_encoding = None  # do it here
-        self.output_embedding = None
-        self.encoder = None
-        self.decoder = None
-        self.linear = None
-        self.softmax = None
-
-
-class Transformer(keras.Model):
-    def __init__(self, in_dim=784, out_dim=10, d_model=512, n_layers=10, dp_rate=0.5):
-        self.n_model = d_model
-        self.n_layers = n_layers
-        self.dp_rate = dp_rate
-        self.out_dim = out_dim
-
-        super(Transformer, self).__init__(name='Transformer')
-
-        self.input_layer = keras.layers.Input(shape=(784,))
-        for i in range(self.n_layers):
-            exec(f"self.dense_{i + 1} = keras.layers.Dense(d_model,activation='relu',name='dense_{i + 1}')")
-            if self.dp_rate > 0:
-                exec(f"self.dp_{i + 1} = keras.layers.Dropout(dp_rate,name='dp_{i + 1}')")
+        a = a/(K.sum(a,axis=-1, keepdims=True)+K.epsilon())
+        v = K.batch_dot(a,value,axes=2)
+        if self.return_attention: # residual use
+            return [v,a]
+        return v
