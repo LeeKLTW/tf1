@@ -32,29 +32,40 @@ class ScaledDotProduct(keras.layers.Layer):
         return output_shape
 
     def compute_mask(self, inputs, mask=None):
-        if isinstance(mask,list):
+        if isinstance(mask, list):
             mask = mask[0]
         if self.return_attention:
             return [mask, None]
         return mask
 
-
-    def __call__(self,inputs, mask=None, **kwargs):
+    def __call__(self, inputs, mask=None, **kwargs):
         if isinstance(inputs, list):
             query, key, value = inputs
         else:
             query = key = value = inputs
-        if isinstance(mask,list):
+        if isinstance(mask, list):
             mask = mask[1]
 
         feature_dim = K.shape(query)[-1]
+        dvd = K.sqrt(K.cast(feature_dim, K.floatx(),'float64')) # for sqrt
 
-        a = K.batch_dot(query, key,axes=2)/ K.sqrt(K.cast(feature_dim),K.floatx())
-        a = K.exp(a - K.max(a,axis=-1, keepdims=True)) # not softmax directly, need to mask
+        a = K.batch_dot(query, key, axes=-1) / dvd
+        a = K.exp(a - K.max(a, axis=-1, keepdims=True))  # not softmax directly, need to mask
 
+        if self.history_only:
+            # query_len, key_len = K.shape(query)[1], K.shape(key)[1]
+            # indicied = tf.tile()
+            pass
+        if mask is not None:
+            a += K.cast(K.expand_dims(mask, axis=-2), K.floatx())
 
-        a = a/(K.sum(a,axis=-1, keepdims=True)+K.epsilon())
-        v = K.batch_dot(a,value,axes=2)
-        if self.return_attention: # residual use
-            return [v,a]
+        a = a / (K.sum(a, axis=-1, keepdims=True) + K.epsilon())
+        v = K.batch_dot(a, value, axes=2)
+        if self.return_attention:  # residual use
+            return [v, a]
         return v
+
+
+class MultiHeadAttention(keras.layers.Layer):
+    def __init__(self, n_head, activation='relu', use_bias=True):
+        pass
