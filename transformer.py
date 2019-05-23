@@ -4,16 +4,16 @@ from tensorflow import keras
 from tensorflow.keras import backend as K
 
 
-class ScaledDorProduct(keras.layers.Layer):
+class ScaledDotProduct(keras.layers.Layer):
     def __init__(self, return_attention=False, history_only=False, **kwargs):
         self.supports_masking = True
         self.return_attention = return_attention
         self.history_only = history_only
-        super(ScaledBorProduct, self).__init__(**kwargs)
+        super(ScaledDotProduct, self).__init__(**kwargs)
 
     def get_config(self):
         config = {'return_attention': self.return_attention, 'history_only': self.history_only}
-        base_config = super(ScaledBorProduct, self).get_config()
+        base_config = super(ScaledDotProduct, self).get_config()
         config = list(base_config.items()) + list(config.items())
         return config
 
