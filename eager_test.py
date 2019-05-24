@@ -37,7 +37,7 @@ with tf.GradientTape() as tape:
 
 (x_train, y_train), (x_test, y_test) = keras.datasets.mnist.load_data()
 
-x_train = tf.cast(tf.reshape(x_train, (60000, 28, 28, 1)) / 255., tf.float32)
+x_train = tf.cast(tf.reshape(x_train, (-1, 28, 28, 1)) / 255., tf.float32)
 y_train = tf.cast(tf.reshape(y_train, (-1, 1)), tf.int64) # tf.int64
 
 x_test = tf.cast(tf.reshape(x_train, (-1, 28, 28, 1)) / 255., tf.float32)
