@@ -6,7 +6,7 @@ from tensorflow.keras import backend as K
 
 class ScaledDotProduct(keras.layers.Layer):
     def __init__(self, return_attention=False, history_only=False, **kwargs):
-        self.supports_masking = True
+        self.supports_masking = True #use keras built-in mask
         self.return_attention = return_attention
         self.history_only = history_only
         super(ScaledDotProduct, self).__init__(**kwargs)
