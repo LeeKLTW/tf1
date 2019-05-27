@@ -89,9 +89,9 @@ class HuberLoss:
 
     def __call__(self, y_true, y_pred):
         error = y_true - y_pred
-        squred_loss = tf.pow(error, 2)/2
+        squred_loss = tf.pow(error, 2) / 2
         abs_loss = self.delta * (tf.abs(error) - 0.5 * self.delta)
-        is_smaller_than_delta = tf.abs(error) <= self.delta #boolean
+        is_smaller_than_delta = tf.abs(error) <= self.delta  # boolean
         tf.where(is_smaller_than_delta, abs_loss, squred_loss)
 
     def get_config(self):
