@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 from tensorflow import keras
+from tensorflow.keras import backend as K
+import tensorflow as tf
 
 (x_train, y_train), (x_test, y_test) = keras.datasets.boston_housing.load_data()
 
