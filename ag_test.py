@@ -96,4 +96,72 @@ class HuberLoss:
 
     def get_config(self):
         # base_config = super(HuberLoss,self).get_config()
-        return {'delta':self.delta}
+        return {'delta': self.delta}
+
+
+def my_softplus(z):
+    return tf.math.log(1 + tf.math.exp(z))
+
+
+def my_glorot_normal_initializer(shape, dtype=tf.float32):
+    stddev = tf.sqrt(2. / (shape[0] + shape[1]))
+    return tf.random.normal(shape=shape, mean=0.0, stddev=stddev, dtype=dtype)
+
+
+def my_l1_regularizer(weights):
+    return tf.reduce_sum(tf.math.abs(weights))
+
+
+def my_relu(z):
+    return tf.where(tf.greater(z, 0), z, tf.zeros_like(z))
+
+
+K.eval(my_relu([1, -1]))
+
+
+class MyL1Regularizer(keras.regularizers.Regularizer):
+    def __init__(self):
+        pass
+
+    def __call__(self, weights):
+        return tf.reduce_sum(tf.math.abs(weights))
+
+    def get_config(self):
+        return
+
+
+# Custom Layer
+
+class MyDense(keras.layers.Layer):
+    def __init__(self, output_dim, activation=None, **kwargs):
+        self.output_dim = output_dim
+        self.activation = keras.activations.get(activation)
+        super(MyDense, self).__init__(**kwargs)
+
+    def build(self, input_shape):
+        self.kernel = self.add_weight(name='kernel', shape=input_shape,trainable=True)
+        self.bias = self.add_weight(name='bias', shape=self.output_dim,trainable=True)
+        super(MyDense, input_shape)
+
+    def __call__(self, inputs, *args, **kwargs):
+        z = tf.matmul(inputs, self.kernel) + self.bias
+        z = self.activation(z)
+        return z
+
+    def compute_output_shape(self,input_shape):
+        return tf.TensorShape(input_shape.as_list()[:-1]+self.output_dim)
+
+
+import numpy as np
+model = keras.Sequential([keras.layers.Dense(10), keras.layers.Dense(1)])
+x_train = np.random.random((3,10))
+y_train = np.sum(x_train,axis=1,keepdims=True)
+model.compile(loss=keras.losses.mean_squared_error, optimizer= keras.optimizers.Adam(), metrics=[keras.metrics.mean_absolute_error])
+model.fit(x_train,y_train)
+model.summary()
+
+
+d = MyDense(10)
+d(tf.constant())
+d(np.random.random((1,10)))
+# AttributeError: 'MyDense' object has no attribute 'kernel'
