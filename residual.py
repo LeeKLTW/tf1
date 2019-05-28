@@ -2,7 +2,6 @@
 import tensorflow as tf
 from tensorflow import keras
 
-
 class ResidualBlock(keras.layers.Layer):
     def __init__(self, n_layers, output_dim, activation=None, use_bias=True,
                  kernel_initializer='lecun_normal', bias_initializer='zeros', kernel_regularizer=None,
@@ -23,6 +22,9 @@ class ResidualBlock(keras.layers.Layer):
                                           bias_initializer=self.bias_initializer) for _ in range(self.n_layers)]
 
     # def build(self, input_shape):
+    #     pass
+
+    # def compute_output_shape(self, input_shape):
     #     pass
 
     def call(self, inputs):
@@ -52,7 +54,7 @@ class ResidualRegressor(keras.Model):
     def call(self, inputs):
         y = self.flatten(inputs)
         y = self.hidden1(y)
-        for _ in range(1 + 3):
+        for _ in range(5):
             y = self.residual_block1(y)
         y = self.residual_block2(y)
         y = self.out(y)
