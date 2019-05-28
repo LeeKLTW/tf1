@@ -134,9 +134,13 @@ class MyDense(keras.layers.Layer):
         return tf.TensorShape(shape)
 
     def get_config(self):
-        base_config = super(MyDense, self).get_config()
-        base_config['output_dim'] = self.output_dim
-        return base_config
+        config = super(MyDense, self).get_config()
+        config = {**config, 'output_dim':self.output_dim, 'activation':keras.activations.serialize(self.activation)}
+        return config
+
+    @classmethod
+    def from_config(cls, config):
+        return cls(**config)
 
 
 def train():
