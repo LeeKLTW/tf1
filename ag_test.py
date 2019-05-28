@@ -2,6 +2,7 @@
 from tensorflow import keras
 from tensorflow.keras import backend as K
 import tensorflow as tf
+import numpy as np
 
 (x_train, y_train), (x_test, y_test) = keras.datasets.boston_housing.load_data()
 
@@ -46,19 +47,6 @@ model_clone.compile(loss='mse', optimizer=optimizer, metrics=[keras.metrics.mean
 
 model_clone.fit(x_train, y_train, epochs=100, validation_data=(x_test, y_test), workers=4, use_multiprocessing=True)
 
-import tensorflow as tf
-
-t = tf.constant([[1, 2, 3], [4, 5, 6]], dtype='float32')
-t @ tf.transpose(t)
-
-tf.constant(2.) + tf.constant(2., dtype='float32')
-
-var = tf.Variable([1, 2], dtype='float32')
-var = var.assign(var + 2)
-
-with tf.Session() as sess:
-    tf.global_variables_initializer().run()
-    print(sess.run(var))
 
 
 def mse(y_true, y_pred):
@@ -73,12 +61,8 @@ def mae(y_true, y_pred):
     return error
 
 
-yt = tf.constant([1, 3], dtype='float32')
-yp = tf.constant([1, 3], dtype='float32')
-
-with tf.Session() as sess:
-    print(sess.run(mse(yt, yp)))
-
+def huber_fn(y_true, y_pred):
+    error = y_true - y_pred
 
 
 # class HuberLoss(keras.losses.Loss): # this should be available in tf2.0
@@ -116,8 +100,6 @@ def my_relu(z):
     return tf.where(tf.greater(z, 0), z, tf.zeros_like(z))
 
 
-K.eval(my_relu([1, -1]))
-
 
 class MyL1Regularizer(keras.regularizers.Regularizer):
     def __init__(self):
@@ -129,9 +111,6 @@ class MyL1Regularizer(keras.regularizers.Regularizer):
     def get_config(self):
         return
 
-
-# Custom Layer
-
 class MyDense(keras.layers.Layer):
     def __init__(self, output_dim, activation=None, **kwargs):
         self.output_dim = output_dim
@@ -139,29 +118,41 @@ class MyDense(keras.layers.Layer):
         super(MyDense, self).__init__(**kwargs)
 
     def build(self, input_shape):
-        self.kernel = self.add_weight(name='kernel', shape=input_shape,trainable=True)
-        self.bias = self.add_weight(name='bias', shape=self.output_dim,trainable=True)
-        super(MyDense, input_shape)
+        shape = tf.TensorShape((input_shape[1:].as_list()+[self.output_dim]))
+        self.kernel = self.add_weight(name='kernel', shape=shape, initializer='uniform', trainable=True)
+        self.bias = self.add_weight(name='bias',shape=shape[-1], initializer='zeros',trainable=True)
+        super(MyDense, self).build(input_shape)
 
-    def __call__(self, inputs, *args, **kwargs):
-        z = tf.matmul(inputs, self.kernel) + self.bias
+    def call(self, inputs): #dont use __call__, use call, otherwise it will not call build
+        z = tf.matmul(inputs, self.kernel)
         z = self.activation(z)
         return z
 
-    def compute_output_shape(self,input_shape):
-        return tf.TensorShape(input_shape.as_list()[:-1]+self.output_dim)
+    def compute_output_shape(self, input_shape):
+        shape = tf.TensorShape(input_shape).as_list()
+        shape[-1] = self.output_dim
+        return tf.TensorShape(shape)
+
+    def get_config(self):
+        base_config = super(MyDense, self).get_config()
+        base_config['output_dim'] = self.output_dim
+        return base_config
 
 
-import numpy as np
-model = keras.Sequential([keras.layers.Dense(10), keras.layers.Dense(1)])
-x_train = np.random.random((3,10))
-y_train = np.sum(x_train,axis=1,keepdims=True)
-model.compile(loss=keras.losses.mean_squared_error, optimizer= keras.optimizers.Adam(), metrics=[keras.metrics.mean_absolute_error])
-model.fit(x_train,y_train)
-model.summary()
+def train():
+    (x_train, y_train), (x_test, y_test) = keras.datasets.mnist.load_data()
+    x_train, x_test = [arr.reshape(-1, 28, 28, 1) / 255. for arr in (x_train, x_test)]
+    y_train, y_test = [arr.reshape(-1, 1) for arr in (y_train, y_test)]
 
+    x3 = keras.layers.Input(shape=(28, 28, 1))
+    y3 = keras.layers.Flatten()(x3)
+    y3 = MyDense(100, activation='selu')(y3)
+    y3 = MyDense(100, activation='selu')(y3)
+    y3 = MyDense(100, activation='selu')(y3)
+    y3 = MyDense(10, activation='softmax')(y3)
 
-d = MyDense(10)
-d(tf.constant())
-d(np.random.random((1,10)))
-# AttributeError: 'MyDense' object has no attribute 'kernel'
+    model3 = keras.models.Model(inputs=[x3], outputs=[y3])
+    model3.compile(loss='sparse_categorical_crossentropy', optimizer=tf.train.AdamOptimizer(), metrics=['accuracy'])
+    model3.fit(x_train, y_train, validation_data=(x_test, y_test))
+    model3.summary()
+
