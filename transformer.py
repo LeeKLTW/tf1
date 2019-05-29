@@ -364,5 +364,4 @@ model.fit(x_train, y_train, validation_data=(x_test, y_test))
 model.summary()
 model.evaluate(x_test,y_test)
 
-for i in range(10):
-    print(len(x_train[i]))
+# todo fix line 363:  assert len(input_shape) >= 3
