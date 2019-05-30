@@ -2,7 +2,13 @@
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import backend as K
-tf.enable_eager_execution()
+import numpy as np
+
+# tf.enable_eager_execution()
+MAX_WORD = 10000
+MAX_LEN = 200
+
+
 
 class PositionnalEncoding(keras.layers.Layer):
     MODE_EXPAND = 'expand'
@@ -20,6 +26,7 @@ class PositionnalEncoding(keras.layers.Layer):
                  mask_zero=False,
                  **kwargs):
         """
+
         :param input_dim: The maximum absolute value of positions.
         :param output_dim: The embedding dimension.
         :param embeddings_initializer:
@@ -312,8 +319,9 @@ class EncoderBlock(keras.layers.Layer):
         self.dim_k = dim_k
         self.dim_model = int(n_head) * int(dim_k)
 
-        self.mha = MultiHeadAttention(n_head=n_head,dim_k=dim_k)
-        self.add_norm = AddNorm()
+        self.mha = MultiHeadAttention(n_head=n_head, dim_k=dim_k)
+        # self.add_norm = AddNorm() # todo ?
+        self.add_norm = keras.layers.BatchNormalization()
         self.ffwd = PointwiseFFWD()
         self.dropout = keras.layers.Dropout(dropout_rate)
 
@@ -325,7 +333,8 @@ class EncoderBlock(keras.layers.Layer):
         x = y
         y = self.mha(y)
         y = self.dropout(y)
-        y = self.add_norm([x, y])
+        # y = self.add_norm([x, y])
+        y = self.add_norm(y[0])
 
         x = y
         y = self.ffwd(y)
@@ -364,13 +373,26 @@ optimizer = tf.train.AdamOptimizer()
 model.compile(loss=keras.losses.sparse_categorical_crossentropy, optimizer=optimizer,
               metrics=[keras.metrics.sparse_categorical_accuracy])
 (x_train, y_train), (x_test, y_test) = keras.datasets.reuters.load_data()
-test_run = True
-if test_run:
-    (x_train, y_train), (x_test, y_test) = (x_train[:100], y_train[:100]), (x_test[:10], y_test[:10])
+test_size = 100  # -1 for all
+(x_train, y_train), (x_test, y_test) = (x_train[:test_size], y_train[:test_size]), (
+    x_test[:int(test_size / 10)], y_test[:int(test_size / 10)])
+
 x_train = keras.preprocessing.sequence.pad_sequences(x_train, maxlen=MAX_LEN)
 x_test = keras.preprocessing.sequence.pad_sequences(x_test, maxlen=MAX_LEN)
-model.fit(x_train, y_train, validation_data=(x_test, y_test))
+
+x = keras.layers.Input((MAX_LEN,))
+y = keras.layers.Embedding(MAX_WORD * 10, 64)(x)
+y = MultiHeadAttention(8, 64)(y)
+# y = EncoderBlock(8, 64)(y)
+y = keras.layers.Flatten()(y)
+y = keras.layers.Dense(46, activation='softmax')(y)
+
+model = keras.Model(inputs=[x], outputs=[y])
+model.compile(loss=keras.losses.sparse_categorical_crossentropy, optimizer=tf.train.AdamOptimizer(),
+              metrics=[keras.metrics.sparse_categorical_accuracy])
+
+model.fit(x_train, y_train, validation_data=(x_test, y_test), epochs=10)
 model.summary()
-model.evaluate(x_test,y_test)
+model.evaluate(x_test, y_test)
 
 # todo fix line 363:  assert len(input_shape) >= 3
