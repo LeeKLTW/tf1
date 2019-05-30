@@ -113,7 +113,7 @@ class PositionnalEncoding(keras.layers.Layer):
 
 
 class MultiHeadAttention(keras.layers.Layer):
-    def __init__(self, n_head, dim_k, activation='relu', use_bias=True, kernel_initializer='glorot_normal',
+    def __init__(self, n_head=8, dim_k=64, activation='relu', use_bias=True, kernel_initializer='glorot_normal',
                  bias_initializer='zeros', kernel_regularizer=None, bias_regularizer=None,
                  kernel_constraint=None, bias_constraint=None, **kwargs):
         self.n_head = n_head
@@ -146,10 +146,17 @@ class MultiHeadAttention(keras.layers.Layer):
     #         raise ValueError('Q, K, V Rank are not equal')  # (batch_size, max_len, dim_k)
 
     def call(self, inputs):
-        if inputs.shape.ndims == 3:
-            q, k, v = inputs
+        if isinstance(inputs, tf.Tensor):
+            if inputs.shape.ndims == 4:  # (batch_size, max_len, dim_k)
+                q, k, v = inputs[0], inputs[1], inputs[2]
+            elif inputs.shape.ndims == 3:  # (batch_size, max_len) self-attention
+                q, k, v = inputs,inputs,inputs
+        elif isinstance(inputs, list) or isinstance(inputs, tuple):  # [q,k,v] or (q,k,v)
+            if len(inputs) == 3:
+                q, k, v = inputs
         else:
             raise ValueError('Input [q,k,v]')
+
         q = K.concatenate([q] * self.n_head, axis=-1)
         k = K.concatenate([k] * self.n_head, axis=-1)
         v = K.concatenate([v] * self.n_head, axis=-1)
@@ -158,6 +165,8 @@ class MultiHeadAttention(keras.layers.Layer):
         k = self.WKbK(k)  # [batch_size, maxlen, dim_model]
         v = self.WVbV(v)  # [batch_size, maxlen, dim_model]
         y = K.batch_dot(q, k, axes=[-1, -1])  # [batch_size, d_model,d_model]
+        scale = self.dim_k**(1/2)
+        y = keras.layers.Lambda(lambda y:y/scale)(y)
         y = K.softmax(y)  # [batch_size, d_model, d_model]
         y = K.batch_dot(v, y, axes=[2, -1])  # [batch_size, maxlen, dim_model]
         return y
