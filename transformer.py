@@ -16,9 +16,7 @@ class PositionnalEncoding(keras.layers.Layer):
     MODE_CONCAT = 'concat'
 
     def __init__(self,
-                 input_dim,
-                 output_dim,
-                 mode=MODE_EXPAND,
+                 output_dim=64,
                  embeddings_initializer='uniform',
                  embeddings_regularizer=None,
                  activity_regularizer=None,
@@ -48,6 +46,18 @@ class PositionnalEncoding(keras.layers.Layer):
 
         self.embeddings = None
         super().__init__(**kwargs)
+
+    #todo
+    @classmethod
+    def positional_signal(cls, hidden_size, length, min_timescale, max_scale):
+        if hidden_size %2 !=0:
+            raise ValueError("")
+        position = K.arange(0,length,dtype=K.floatx())
+        num_timescales = hidden_size //2
+
+
+
+
 
     def get_config(self):
         config = {'input_dim': self.input_dim,
