@@ -11,9 +11,6 @@ MAX_LEN = 200
 
 
 class PositionnalEncoding(keras.layers.Layer):
-    MODE_EXPAND = 'expand'
-    MODE_ADD = 'add'
-    MODE_CONCAT = 'concat'
 
     def __init__(self,
                  output_dim=64,
@@ -24,38 +21,24 @@ class PositionnalEncoding(keras.layers.Layer):
                  mask_zero=False,
                  **kwargs):
         """
-
-        :param input_dim: The maximum absolute value of positions.
-        :param output_dim: The embedding dimension.
-        :param embeddings_initializer:
-        :param embeddings_regularizer:
-        :param activity_regularizer:
-        :param embeddings_constraint:
-        :param mask_zero: The index that represents padding. Only works in `append` mode.
-        :param kwargs:
         """
-        self.input_dim = input_dim
         self.output_dim = output_dim
-        self.mode = mode
+
         self.embeddings_initializer = keras.initializers.get(embeddings_initializer)
         self.embeddings_regularizer = keras.regularizers.get(embeddings_regularizer)
         self.activity_regularizer = keras.regularizers.get(activity_regularizer)
         self.embeddings_constraint = keras.constraints.get(embeddings_constraint)
+
         self.mask_zero = mask_zero
         self.supports_masking = mask_zero is not False
 
         self.embeddings = None
         super().__init__(**kwargs)
 
-    #todo
+    #todo: checkout https://github.com/tensorflow/tensor2tensor/blob/master/tensor2tensor/layers/common_attention.py
     @classmethod
-    def positional_signal(cls, hidden_size, length, min_timescale, max_scale):
-        if hidden_size %2 !=0:
-            raise ValueError("")
-        position = K.arange(0,length,dtype=K.floatx())
-        num_timescales = hidden_size //2
-
-
+    def positional_signal(cls):
+        pass
 
 
 
@@ -171,6 +154,8 @@ class MultiHeadAttention(keras.layers.Layer):
         elif isinstance(inputs, list) or isinstance(inputs, tuple):  # [q,k,v] or (q,k,v)
             if len(inputs) == 3:
                 q, k, v = inputs
+            else:
+                raise ValueError(f'Length of list is not correct{len(inputs)}')
         else:
             raise ValueError('Input [q,k,v]')
 
@@ -186,9 +171,8 @@ class MultiHeadAttention(keras.layers.Layer):
         y = keras.layers.Lambda(lambda y:y/scale)(y)
         y = K.softmax(y)  # [batch_size, d_model, d_model]
         y = K.batch_dot(v, y, axes=[2, -1])  # [batch_size, maxlen, dim_model]
+        y = K.reshape(y,(-1,q.shape[1],self.n_head,self.dim_k))
         return y
-
-        pass
 
     def get_config(self):
         config = {'head_num': self.head_num,
@@ -210,58 +194,25 @@ class MultiHeadAttention(keras.layers.Layer):
         return shape
 
 
-# From Long
 class AddNorm(keras.layers.Layer):
-    def __init__(self,
-                 center=True,
-                 scale=True,
-                 epsilon=None,
+    def __init__(self,epsilon=K.epsilon(),
                  gamma_initializer='ones',
                  beta_initializer='zeros',
-                 gamma_regularizer=None,
-                 beta_regularizer=None,
-                 gamma_constraint=None,
-                 beta_constraint=None,
                  **kwargs):
         """Layer normalization layer
-        See: [Layer Normalization](https://arxiv.org/pdf/1607.06450.pdf)
-        :param center: Add an offset parameter if it is True.
-        :param scale: Add a scale parameter if it is True.
-        :param epsilon: Epsilon for calculating variance.
-        :param gamma_initializer: Initializer for the gamma weight.
-        :param beta_initializer: Initializer for the beta weight.
-        :param gamma_regularizer: Optional regularizer for the gamma weight.
-        :param beta_regularizer: Optional regularizer for the beta weight.
-        :param gamma_constraint: Optional constraint for the gamma weight.
-        :param beta_constraint: Optional constraint for the beta weight.
-        :param kwargs:
         """
         super().__init__(**kwargs)
         self.supports_masking = True
-        self.center = center
-        self.scale = scale
-        if epsilon is None:
-            epsilon = K.epsilon() * K.epsilon()
         self.epsilon = epsilon
         self.gamma_initializer = keras.initializers.get(gamma_initializer)
         self.beta_initializer = keras.initializers.get(beta_initializer)
-        self.gamma_regularizer = keras.regularizers.get(gamma_regularizer)
-        self.beta_regularizer = keras.regularizers.get(beta_regularizer)
-        self.gamma_constraint = keras.constraints.get(gamma_constraint)
-        self.beta_constraint = keras.constraints.get(beta_constraint)
         self.gamma, self.beta = None, None
 
     def get_config(self):
         config = {
-            'center': self.center,
-            'scale': self.scale,
             'epsilon': self.epsilon,
             'gamma_initializer': keras.initializers.serialize(self.gamma_initializer),
             'beta_initializer': keras.initializers.serialize(self.beta_initializer),
-            'gamma_regularizer': keras.regularizers.serialize(self.gamma_regularizer),
-            'beta_regularizer': keras.regularizers.serialize(self.beta_regularizer),
-            'gamma_constraint': keras.constraints.serialize(self.gamma_constraint),
-            'beta_constraint': keras.constraints.serialize(self.beta_constraint),
         }
         base_config = super().get_config()
         return dict(list(base_config.items()) + list(config.items()))
@@ -273,45 +224,44 @@ class AddNorm(keras.layers.Layer):
         return input_mask
 
     def build(self, input_shape):
-        self.input_spec = keras.layers.InputSpec(shape=input_shape)
-        shape = input_shape[-1:]
-        if self.scale:
-            self.gamma = self.add_weight(
-                shape=shape,
-                initializer=self.gamma_initializer,
-                regularizer=self.gamma_regularizer,
-                constraint=self.gamma_constraint,
-                name='gamma',
-            )
-        if self.center:
-            self.beta = self.add_weight(
-                shape=shape,
-                initializer=self.beta_initializer,
-                regularizer=self.beta_regularizer,
-                constraint=self.beta_constraint,
-                name='beta',
-            )
+        if isinstance(input_shape,list):
+            if isinstance(input_shape[0],tf.TensorShape):
+                assert input_shape[0].as_list()==input_shape[1].as_list(), 'shape must be equal'
+                shape = input_shape[0].as_list()[1:]
+            else:
+                raise TypeError(f'Unrecognized type {type(input_shape[0])}')
+        elif isinstance(input_shape,tf.TensorShape):
+            shape = input_shape.as_list()[1:]
+        else:
+            raise TypeError(f'Unrecognized type {type(input_shape)}')
+        self.gamma = self.add_weight(
+            shape=shape,
+            initializer=self.gamma_initializer,
+            name='gamma')
+        self.beta = self.add_weight(
+            shape=shape,
+            initializer=self.beta_initializer,
+            name='beta')
         super().build(input_shape)
 
-    def call(self, inputs, training=None):
-        mean = K.mean(inputs, axis=-1, keepdims=True)
-        variance = K.mean(K.square(inputs - mean), axis=-1, keepdims=True)
-        std = K.sqrt(variance + self.epsilon)
-        outputs = (inputs - mean) / std
-        if self.scale:
-            outputs *= self.gamma
-        if self.center:
-            outputs += self.beta
-        return outputs
+    def call(self, inputs):
+        if not isinstance(inputs,list):
+            raise TypeError('Need to be list for residual.')
 
+        y = keras.layers.Add()([inputs[0],inputs[1]])
+
+        mean = K.mean(y, axis=-1, keepdims=True)
+        std = K.std(y,axis=-1,keepdims=True)
+        y = self.gamma*(y-mean)/(std+self.epsilon)*self.beta
+        return y
 
 class PointwiseFFWD(keras.layers.Layer):
-    def __init__(self, d_model=512, d_ff=2048, **kwargs):
+    def __init__(self, d_k=64, d_ff=2048, **kwargs):
         super().__init__(**kwargs)
-        self.d_model = d_model
+        self.d_model = d_k
         self.d_ff = d_ff
-        self.w1b1 = keras.layers.Conv1D(d_ff, kernel_size=1)
-        self.w2b2 = keras.layers.Conv1D(d_model, kernel_size=1)
+        self.w1b1 = keras.layers.Conv2D(d_ff, kernel_size=1,padding='same')
+        self.w2b2 = keras.layers.Conv2D(d_k, kernel_size=1,padding='same')
 
     def build(self, input_shape):
         pass
@@ -330,8 +280,7 @@ class EncoderBlock(keras.layers.Layer):
         self.dim_model = int(n_head) * int(dim_k)
 
         self.mha = MultiHeadAttention(n_head=n_head, dim_k=dim_k)
-        # self.add_norm = AddNorm() # todo ?
-        self.add_norm = keras.layers.BatchNormalization()
+        self.add_norm = AddNorm()
         self.ffwd = PointwiseFFWD()
         self.dropout = keras.layers.Dropout(dropout_rate)
 
@@ -339,38 +288,35 @@ class EncoderBlock(keras.layers.Layer):
         pass
 
     def call(self, inputs):
-        y = self.dropout(inputs)
-        x = y
-        y = self.mha(y)
+        x = y = self.dropout(inputs)
+        y = self.mha([y,y,y])
         y = self.dropout(y)
-        # y = self.add_norm([x, y])
-        y = self.add_norm(y[0])
 
-        x = y
+        x = K.expand_dims(x,-2)
+        x = K.concatenate([x]*self.n_head,axis=-2)
+
+        x = y = self.add_norm([x,y])
+
         y = self.ffwd(y)
         y = self.dropout(y)
-        y = self.add_norm([x, y])
+
+        y = self.add_norm([x[1:], y[1:]])
 
         return y
-
-
-MAX_WORD = 1000
-MAX_LEN = 10
 
 
 class Encoder(keras.Model):
     def __init__(self, output_dim=64, n_blocks=6, n_category=46, **kwargs):
         super().__init__(**kwargs)
-        self.time_dist = keras.layers.TimeDistributed(keras.layers.Dense(1))
         self.embedding = keras.layers.Embedding(MAX_WORD, output_dim)
         self.posenc = PositionnalEncoding(input_dim=MAX_LEN, output_dim=output_dim)
         self.encoder_blocks = [EncoderBlock() for _ in range(n_blocks)]
         self.output_dense = keras.layers.Dense(n_category, activation='softmax')
 
     def call(self, inputs):
-        y = self.time_dist(inputs)
+        y = inputs
         y = self.embedding(y)
-        y = self.posenc(y)
+        # y = self.posenc(y)
 
         for block in self.encoder_blocks:
             y = block(y)
@@ -378,22 +324,28 @@ class Encoder(keras.Model):
         y = self.output_dense(y)
         return y
 
-model = Encoder()
-optimizer = tf.train.AdamOptimizer()
-model.compile(loss=keras.losses.sparse_categorical_crossentropy, optimizer=optimizer,
-              metrics=[keras.metrics.sparse_categorical_accuracy])
+
 (x_train, y_train), (x_test, y_test) = keras.datasets.reuters.load_data()
-test_size = 100  # -1 for all
+test_size = -1000  # -1 for all
 (x_train, y_train), (x_test, y_test) = (x_train[:test_size], y_train[:test_size]), (
     x_test[:int(test_size / 10)], y_test[:int(test_size / 10)])
 
 x_train = keras.preprocessing.sequence.pad_sequences(x_train, maxlen=MAX_LEN)
 x_test = keras.preprocessing.sequence.pad_sequences(x_test, maxlen=MAX_LEN)
 
+# def get_word(index):
+#     global word_index
+#     word_index = keras.datasets.reuters.get_word_index()
+#     for (k, v) in word_index.items():
+#         if v == index:
+#             return str(k)
+#     return ''
+
+
 x = keras.layers.Input((MAX_LEN,))
 y = keras.layers.Embedding(MAX_WORD * 10, 64)(x)
-y = MultiHeadAttention(8, 64)(y)
-# y = EncoderBlock(8, 64)(y)
+# y = MultiHeadAttention(8, 64)(y)
+y = EncoderBlock()(y) #(None , max_len, n_head, dim_k)
 y = keras.layers.Flatten()(y)
 y = keras.layers.Dense(46, activation='softmax')(y)
 
@@ -401,8 +353,6 @@ model = keras.Model(inputs=[x], outputs=[y])
 model.compile(loss=keras.losses.sparse_categorical_crossentropy, optimizer=tf.train.AdamOptimizer(),
               metrics=[keras.metrics.sparse_categorical_accuracy])
 
-model.fit(x_train, y_train, validation_data=(x_test, y_test), epochs=10)
+model.fit(x_train, y_train, epochs=1)
 model.summary()
 model.evaluate(x_test, y_test)
-
-# todo fix line 363:  assert len(input_shape) >= 3
