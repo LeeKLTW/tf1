@@ -11,17 +11,17 @@ MAX_LEN = 200
 
 
 class PositionnalEncoding(keras.layers.Layer):
+    "3.5"
 
     def __init__(self,
-                 output_dim=64,
+                 output_dim=512,
                  embeddings_initializer='uniform',
                  embeddings_regularizer=None,
                  activity_regularizer=None,
                  embeddings_constraint=None,
                  mask_zero=False,
                  **kwargs):
-        """
-        """
+
         self.output_dim = output_dim
 
         self.embeddings_initializer = keras.initializers.get(embeddings_initializer)
@@ -35,81 +35,12 @@ class PositionnalEncoding(keras.layers.Layer):
         self.embeddings = None
         super().__init__(**kwargs)
 
-    #todo: checkout https://github.com/tensorflow/tensor2tensor/blob/master/tensor2tensor/layers/common_attention.py
-    @classmethod
-    def positional_signal(cls):
+    def _positional_signal(self,pos,i):
+        ""
+        encodings = tf.constant(np.zeros(MAX_LEN,self.output_dim),shape=(MAX_LEN,self.output_dim))
         pass
 
 
-
-    def get_config(self):
-        config = {'input_dim': self.input_dim,
-                  'output_dim': self.output_dim,
-                  'mode': self.mode,
-                  'embeddings_initializer': keras.initializers.serialize(self.embeddings_initializer),
-                  'embeddings_regularizer': keras.regularizers.serialize(self.embeddings_regularizer),
-                  'activity_regularizer': keras.regularizers.serialize(self.activity_regularizer),
-                  'embeddings_constraint': keras.constraints.serialize(self.embeddings_constraint),
-                  'mask_zero': self.mask_zero}
-        base_config = super().get_config()
-        return dict(list(base_config.items()) + list(config.items()))
-
-    def build(self, input_shape):
-        if self.mode == self.MODE_EXPAND:
-            self.embeddings = self.add_weight(
-                shape=(self.input_dim * 2 + 1, self.output_dim),
-                initializer=self.embeddings_initializer,
-                name='embeddings',
-                regularizer=self.embeddings_regularizer,
-                constraint=self.embeddings_constraint,
-            )
-        else:
-            self.embeddings = self.add_weight(
-                shape=(self.input_dim, self.output_dim),
-                initializer=self.embeddings_initializer,
-                name='embeddings',
-                regularizer=self.embeddings_regularizer,
-                constraint=self.embeddings_constraint,
-            )
-        super().build(input_shape)
-
-    def compute_mask(self, inputs, mask=None):
-        if self.mode == self.MODE_EXPAND:
-            if self.mask_zero:
-                output_mask = K.not_equal(inputs, self.mask_zero)
-            else:
-                output_mask = None
-        else:
-            output_mask = mask
-        return output_mask
-
-    def compute_output_shape(self, input_shape):
-        if self.mode == self.MODE_EXPAND:
-            return input_shape + (self.output_dim,)
-        if self.mode == self.MODE_CONCAT:
-            return input_shape[:-1] + (input_shape[-1] + self.output_dim,)
-        return input_shape
-
-    def call(self, inputs, **kwargs):
-        if self.mode == self.MODE_EXPAND:
-            if K.dtype(inputs) != 'int32':
-                inputs = K.cast(inputs, 'int32')
-            return K.gather(
-                self.embeddings,
-                K.minimum(K.maximum(inputs, -self.input_dim), self.input_dim) + self.input_dim,
-            )
-        input_shape = K.shape(inputs)
-        if self.mode == self.MODE_ADD:
-            batch_size, seq_len, output_dim = input_shape[0], input_shape[1], input_shape[2]
-        else:
-            batch_size, seq_len, output_dim = input_shape[0], input_shape[1], self.output_dim
-        pos_embeddings = K.tile(
-            K.expand_dims(self.embeddings[:seq_len, :self.output_dim], axis=0),
-            [batch_size, 1, 1],
-        )
-        if self.mode == self.MODE_ADD:
-            return inputs + pos_embeddings
-        return K.concatenate([inputs, pos_embeddings], axis=-1)
 
 
 class MultiHeadAttention(keras.layers.Layer):
