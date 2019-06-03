@@ -78,7 +78,7 @@ class MultiHeadAttention(keras.layers.Layer):
             if inputs.shape.ndims == 4:  # (batch_size, max_len, dim_k)
                 q, k, v = inputs[0], inputs[1], inputs[2]
             elif inputs.shape.ndims == 3:  # (batch_size, max_len) self-attention
-                q, k, v = inputs,inputs,inputs
+                q, k, v = inputs, inputs, inputs
         elif isinstance(inputs, list) or isinstance(inputs, tuple):  # [q,k,v] or (q,k,v)
             if len(inputs) == 3:
                 q, k, v = inputs
@@ -95,11 +95,11 @@ class MultiHeadAttention(keras.layers.Layer):
         k = self.WKbK(k)  # [batch_size, maxlen, dim_model]
         v = self.WVbV(v)  # [batch_size, maxlen, dim_model]
         y = K.batch_dot(q, k, axes=[-1, -1])  # [batch_size, d_model,d_model]
-        scale = self.dim_k**(1/2)
-        y = keras.layers.Lambda(lambda y:y/scale)(y)
+        scale = self.dim_k ** (1 / 2)
+        y = keras.layers.Lambda(lambda y: y / scale)(y)
         y = K.softmax(y)  # [batch_size, d_model, d_model]
         y = K.batch_dot(v, y, axes=[2, -1])  # [batch_size, maxlen, dim_model]
-        y = K.reshape(y,(-1,q.shape[1],self.n_head,self.dim_k))
+        y = K.reshape(y, (-1, q.shape[1], self.n_head, self.dim_k))
         return y
 
     def get_config(self):
@@ -123,7 +123,7 @@ class MultiHeadAttention(keras.layers.Layer):
 
 
 class AddNorm(keras.layers.Layer):
-    def __init__(self,epsilon=K.epsilon(),
+    def __init__(self, epsilon=K.epsilon(),
                  gamma_initializer='ones',
                  beta_initializer='zeros',
                  **kwargs):
@@ -152,13 +152,13 @@ class AddNorm(keras.layers.Layer):
         return input_mask
 
     def build(self, input_shape):
-        if isinstance(input_shape,list):
-            if isinstance(input_shape[0],tf.TensorShape):
-                assert input_shape[0].as_list()==input_shape[1].as_list(), 'shape must be equal'
+        if isinstance(input_shape, list):
+            if isinstance(input_shape[0], tf.TensorShape):
+                assert input_shape[0].as_list() == input_shape[1].as_list(), 'shape must be equal'
                 shape = input_shape[0].as_list()[1:]
             else:
                 raise TypeError(f'Unrecognized type {type(input_shape[0])}')
-        elif isinstance(input_shape,tf.TensorShape):
+        elif isinstance(input_shape, tf.TensorShape):
             shape = input_shape.as_list()[1:]
         else:
             raise TypeError(f'Unrecognized type {type(input_shape)}')
@@ -173,23 +173,24 @@ class AddNorm(keras.layers.Layer):
         super().build(input_shape)
 
     def call(self, inputs):
-        if not isinstance(inputs,list):
+        if not isinstance(inputs, list):
             raise TypeError('Need to be list for residual.')
 
-        y = keras.layers.Add()([inputs[0],inputs[1]])
+        y = keras.layers.Add()([inputs[0], inputs[1]])
 
         mean = K.mean(y, axis=-1, keepdims=True)
-        std = K.std(y,axis=-1,keepdims=True)
-        y = self.gamma*(y-mean)/(std+self.epsilon)*self.beta
+        std = K.std(y, axis=-1, keepdims=True)
+        y = self.gamma * (y - mean) / (std + self.epsilon) * self.beta
         return y
+
 
 class PointwiseFFWD(keras.layers.Layer):
     def __init__(self, d_k=64, d_ff=2048, **kwargs):
         super().__init__(**kwargs)
         self.d_model = d_k
         self.d_ff = d_ff
-        self.w1b1 = keras.layers.Conv2D(d_ff, kernel_size=1,padding='same')
-        self.w2b2 = keras.layers.Conv2D(d_k, kernel_size=1,padding='same')
+        self.w1b1 = keras.layers.Conv2D(d_ff, kernel_size=1, padding='same')
+        self.w2b2 = keras.layers.Conv2D(d_k, kernel_size=1, padding='same')
 
     def build(self, input_shape):
         pass
@@ -217,13 +218,13 @@ class EncoderBlock(keras.layers.Layer):
 
     def call(self, inputs):
         x = y = self.dropout(inputs)
-        y = self.mha([y,y,y])
+        y = self.mha([y, y, y])
         y = self.dropout(y)
 
-        x = K.expand_dims(x,-2)
-        x = K.concatenate([x]*self.n_head,axis=-2)
+        x = K.expand_dims(x, -2)
+        x = K.concatenate([x] * self.n_head, axis=-2)
 
-        x = y = self.add_norm([x,y])
+        x = y = self.add_norm([x, y])
 
         y = self.ffwd(y)
         y = self.dropout(y)
@@ -237,7 +238,7 @@ class Encoder(keras.Model):
     def __init__(self, output_dim=64, n_blocks=6, n_category=46, **kwargs):
         super().__init__(**kwargs)
         self.embedding = keras.layers.Embedding(MAX_WORD, output_dim)
-        self.posenc = PositionnalEncoding(input_dim=MAX_LEN, output_dim=output_dim)
+        self.posenc = PositionalEncoding(input_dim=MAX_LEN, output_dim=output_dim)
         self.encoder_blocks = [EncoderBlock() for _ in range(n_blocks)]
         self.output_dense = keras.layers.Dense(n_category, activation='softmax')
 
@@ -252,35 +253,3 @@ class Encoder(keras.Model):
         y = self.output_dense(y)
         return y
 
-
-(x_train, y_train), (x_test, y_test) = keras.datasets.reuters.load_data()
-test_size = -1000  # -1 for all
-(x_train, y_train), (x_test, y_test) = (x_train[:test_size], y_train[:test_size]), (
-    x_test[:int(test_size / 10)], y_test[:int(test_size / 10)])
-
-x_train = keras.preprocessing.sequence.pad_sequences(x_train, maxlen=MAX_LEN)
-x_test = keras.preprocessing.sequence.pad_sequences(x_test, maxlen=MAX_LEN)
-
-# def get_word(index):
-#     global word_index
-#     word_index = keras.datasets.reuters.get_word_index()
-#     for (k, v) in word_index.items():
-#         if v == index:
-#             return str(k)
-#     return ''
-
-
-x = keras.layers.Input((MAX_LEN,))
-y = keras.layers.Embedding(MAX_WORD * 10, 64)(x)
-# y = MultiHeadAttention(8, 64)(y)
-y = EncoderBlock()(y) #(None , max_len, n_head, dim_k)
-y = keras.layers.Flatten()(y)
-y = keras.layers.Dense(46, activation='softmax')(y)
-
-model = keras.Model(inputs=[x], outputs=[y])
-model.compile(loss=keras.losses.sparse_categorical_crossentropy, optimizer=tf.train.AdamOptimizer(),
-              metrics=[keras.metrics.sparse_categorical_accuracy])
-
-model.fit(x_train, y_train, epochs=1)
-model.summary()
-model.evaluate(x_test, y_test)
