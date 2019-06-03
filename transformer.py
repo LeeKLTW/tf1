@@ -9,38 +9,35 @@ MAX_WORD = 10000
 MAX_LEN = 200
 
 
+class PositionalEncoding(keras.layers.Layer):
+    """3.5 Positional encoding."""
 
-class PositionnalEncoding(keras.layers.Layer):
-    "3.5"
-
-    def __init__(self,
-                 output_dim=512,
-                 embeddings_initializer='uniform',
-                 embeddings_regularizer=None,
-                 activity_regularizer=None,
-                 embeddings_constraint=None,
-                 mask_zero=False,
-                 **kwargs):
-
-        self.output_dim = output_dim
-
-        self.embeddings_initializer = keras.initializers.get(embeddings_initializer)
-        self.embeddings_regularizer = keras.regularizers.get(embeddings_regularizer)
-        self.activity_regularizer = keras.regularizers.get(activity_regularizer)
-        self.embeddings_constraint = keras.constraints.get(embeddings_constraint)
-
-        self.mask_zero = mask_zero
-        self.supports_masking = mask_zero is not False
-
-        self.embeddings = None
+    def __init__(self, dim_k=64, n_head=8, masking=False, **kwargs):
+        self.output_dim = self.dim_model = dim_k * n_head  # dim_model
+        self.supports_masking = masking
         super().__init__(**kwargs)
 
-    def _positional_signal(self,pos,i):
-        ""
-        encodings = tf.constant(np.zeros(MAX_LEN,self.output_dim),shape=(MAX_LEN,self.output_dim))
+    def build(self, input_shape):
         pass
 
+    def call(self, inputs, mode='add'):
+        """inputs shape must be [None,maxlen,d_model] """
+        MODE_LIST = ['add']
 
+        pos_enc = tf.constant(
+            [[pos / (10000 ** (i / self.dim_model)) for i in range(self.dim_model)] for pos in range(self.dim_model)])
+        pos_enc[0::2, :] = tf.sin(pos_enc[0::2, :])
+        pos_enc[1::2, :] = tf.cos(pos_enc[1::2, :])
+
+        if mode.lower() == 'add':
+            inputs += pos_enc
+        else:
+            raise ValueError(f'argument of mode must be in {MODE_LIST[:]}, but recieve {mode}')
+
+        return pos_enc
+
+    def compute_output_shape(self, input_shape):
+        return input_shape
 
 
 class MultiHeadAttention(keras.layers.Layer):
