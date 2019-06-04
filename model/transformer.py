@@ -12,43 +12,66 @@ MAX_LEN = 200
 class PositionalEncoding(keras.layers.Layer):
     """3.5 Positional encoding."""
 
-    def __init__(self, dim_k=64, n_head=8, masking=False, **kwargs):
+    def __init__(self, dim_k=64, n_head=8, maxlen=MAX_LEN, masking=False, **kwargs):
         self.output_dim = self.dim_model = dim_k * n_head  # dim_model
+        self.maxlen = maxlen
         self.supports_masking = masking
         super().__init__(**kwargs)
 
     def build(self, input_shape):
         pass
 
-    def call(self, inputs, mode='add'):
+    def call(self, inputs, maxlen=MAX_LEN, mode='add'):
         """inputs shape must be [None,maxlen,d_model] """
         MODE_LIST = ['add']
 
-        pos_enc = tf.constant(
-            [[pos / (10000 ** (i / self.dim_model)) for i in range(self.dim_model)] for pos in range(self.dim_model)])
-        pos_enc[0::2, :] = tf.sin(pos_enc[0::2, :])
-        pos_enc[1::2, :] = tf.cos(pos_enc[1::2, :])
+        pos_enc = K.variable(
+            [[pos / (10000 ** (i / self.dim_model)) for i in range(self.dim_model)] for pos in range(maxlen)])
+        tf.assign(pos_enc[0::2, :], tf.sin(pos_enc[0::2, :]))
+        tf.assign(pos_enc[1::2, :], tf.cos(pos_enc[1::2, :]))
 
         if mode.lower() == 'add':
-            inputs += pos_enc
+            y = inputs + pos_enc
+
         else:
             raise ValueError(f'argument of mode must be in {MODE_LIST[:]}, but recieve {mode}')
 
-        return pos_enc
+        return y
 
     def compute_output_shape(self, input_shape):
         return input_shape
 
 
 class MultiHeadAttention(keras.layers.Layer):
-    def __init__(self, n_head=8, dim_k=64, activation='relu', use_bias=True, kernel_initializer='glorot_normal',
+    def __init__(self, n_head=8, dim_k=64, masking_value=0.0, activation='relu', use_bias=True,
+                 kernel_initializer='glorot_normal',
                  bias_initializer='zeros', kernel_regularizer=None, bias_regularizer=None,
-                 kernel_constraint=None, bias_constraint=None, **kwargs):
+                 kernel_constraint=None, bias_constraint=None, reshape_to_head=False, **kwargs):
+        """
+
+        Args:
+            n_head:
+            dim_k:
+            masking_value: set to -1e8, to use masking
+            activation:
+            use_bias:
+            kernel_initializer:
+            bias_initializer:
+            kernel_regularizer:
+            bias_regularizer:
+            kernel_constraint:
+            bias_constraint:
+            reshape_to_head:
+            **kwargs:
+        """
         self.n_head = n_head
         self.dim_k = dim_k
         self.dim_model = int(n_head) * int(dim_k)
         self.output_dim = tf.Dimension(64)
+        self.masking_value = masking_value
+
         self.activation = keras.activations.get(activation)
+
         self.use_bias = use_bias
         self.kernel_initializer = keras.initializers.get(kernel_initializer)
         self.bias_initializer = keras.initializers.get(bias_initializer)
@@ -57,6 +80,7 @@ class MultiHeadAttention(keras.layers.Layer):
         self.kernel_constraint = keras.constraints.get(kernel_constraint)
         self.bias_constraint = keras.constraints.get(bias_constraint)
         self.supports_masking = True  # use keras built-in mask
+        self.reshape_to_head = reshape_to_head
 
         self.WQbQ = keras.layers.Dense(self.dim_model, kernel_initializer=self.kernel_initializer,
                                        bias_initializer=self.bias_initializer, trainable=True)
@@ -75,7 +99,7 @@ class MultiHeadAttention(keras.layers.Layer):
 
     def call(self, inputs):
         if isinstance(inputs, tf.Tensor):
-            if inputs.shape.ndims == 4:  # (batch_size, max_len, dim_k)
+            if inputs.shape.ndims == 4:  # (batch_size, max_len, dim_model)
                 q, k, v = inputs[0], inputs[1], inputs[2]
             elif inputs.shape.ndims == 3:  # (batch_size, max_len) self-attention
                 q, k, v = inputs, inputs, inputs
@@ -87,19 +111,34 @@ class MultiHeadAttention(keras.layers.Layer):
         else:
             raise ValueError('Input [q,k,v]')
 
-        q = K.concatenate([q] * self.n_head, axis=-1)
-        k = K.concatenate([k] * self.n_head, axis=-1)
-        v = K.concatenate([v] * self.n_head, axis=-1)
-
+        # linear W
         q = self.WQbQ(q)  # [batch_size, maxlen, dim_model]
         k = self.WKbK(k)  # [batch_size, maxlen, dim_model]
         v = self.WVbV(v)  # [batch_size, maxlen, dim_model]
+
+        # matmul
         y = K.batch_dot(q, k, axes=[-1, -1])  # [batch_size, d_model,d_model]
+
+        # scale
         scale = self.dim_k ** (1 / 2)
-        y = keras.layers.Lambda(lambda y: y / scale)(y)
-        y = K.softmax(y)  # [batch_size, d_model, d_model]
-        y = K.batch_dot(v, y, axes=[2, -1])  # [batch_size, maxlen, dim_model]
-        y = K.reshape(y, (-1, q.shape[1], self.n_head, self.dim_k))
+        y = keras.layers.Lambda(lambda y: y / scale)(y)  # [batch_size, d_model, d_model]
+
+        # mask(opt)
+        if self.masking_value != 0.:
+            y = keras.layers.Masking(self.masking_value)(y)
+
+        # softmax
+
+        y = K.reshape(y, (-1, self.dim_model, self.n_head, self.dim_k))  # [batch_size, dim_model, n_head, dim_k]
+        y = K.softmax(y, axis=-1)  # [batch_size, dim_model, dim_model]
+        y = K.reshape(y, (-1, self.dim_model, self.dim_model))  # [batch_size, dim_model, dim_model]
+
+        # mat_mul
+        y = K.batch_dot(v, y, axes=[2, 3])  # [batch_size, maxlen, dim_model]
+
+        if self.reshape_to_head:
+            y = K.reshape(y, (-1, q.shape[1], self.n_head, self.dim_k))
+
         return y
 
     def get_config(self):
@@ -176,7 +215,8 @@ class AddNorm(keras.layers.Layer):
         if not isinstance(inputs, list):
             raise TypeError('Need to be list for residual.')
 
-        y = keras.layers.Add()([inputs[0], inputs[1]])
+        # y = keras.layers.Add()([inputs[0], inputs[1]])
+        y = inputs[0]+inputs[1] # fix [None, None] above
 
         mean = K.mean(y, axis=-1, keepdims=True)
         std = K.std(y, axis=-1, keepdims=True)
@@ -185,12 +225,12 @@ class AddNorm(keras.layers.Layer):
 
 
 class PointwiseFFWD(keras.layers.Layer):
-    def __init__(self, d_k=64, d_ff=2048, **kwargs):
+    def __init__(self, d_model=512, d_ff=2048, **kwargs):
         super().__init__(**kwargs)
-        self.d_model = d_k
+        self.d_model = d_model
         self.d_ff = d_ff
-        self.w1b1 = keras.layers.Conv2D(d_ff, kernel_size=1, padding='same')
-        self.w2b2 = keras.layers.Conv2D(d_k, kernel_size=1, padding='same')
+        self.w1b1 = keras.layers.Conv1D(d_ff, kernel_size=1, padding='same')
+        self.w2b2 = keras.layers.Conv1D(d_model, kernel_size=1, padding='same')
 
     def build(self, input_shape):
         pass
@@ -201,6 +241,7 @@ class PointwiseFFWD(keras.layers.Layer):
         return y
 
 
+# todo
 class EncoderBlock(keras.layers.Layer):
     def __init__(self, n_head=8, dim_k=64, dropout_rate=0.1, **kwargs):
         super().__init__(**kwargs)
@@ -252,4 +293,3 @@ class Encoder(keras.Model):
 
         y = self.output_dense(y)
         return y
-
