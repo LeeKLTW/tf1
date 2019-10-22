@@ -18,7 +18,7 @@ Keras-Preprocessing==1.0.9
 Markdown==3.0.1
 MarkupSafe==1.1.0
 numpy==1.16.1
-Pillow==5.4.1
+Pillow==6.2.0
 protobuf==3.6.1
 redis==3.2.0
 requests==2.21.0
